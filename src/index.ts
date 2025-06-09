@@ -8,7 +8,7 @@ const app = express();
 const prisma = new PrismaClient();
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 // Add GET / route to prevent "Cannot GET /"
 app.get('/', (req: Request, res: Response) => {
