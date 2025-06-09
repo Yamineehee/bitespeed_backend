@@ -19,7 +19,7 @@ dotenv_1.default.config();
 const app = (0, express_1.default)();
 const prisma = new client_1.PrismaClient();
 app.use(express_1.default.json());
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 // Add GET / route to prevent "Cannot GET /"
 app.get('/', (req, res) => {
     res.send(`

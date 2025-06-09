@@ -8,9 +8,11 @@ const app = express();
 const prisma = new PrismaClient();
 app.use(express.json());
 
+// 
+type Contact = NonNullable<Awaited<ReturnType<typeof prisma.contact.findFirst>>>;
+
 const PORT = process.env.PORT || 4000;
 
-// Add GET / route to prevent "Cannot GET /"
 app.get('/', (req: Request, res: Response) => {
   res.send(`
     <h2>Server is running!</h2>
@@ -27,14 +29,14 @@ app.get('/', (req: Request, res: Response) => {
 
 app.post('/identify', async (req: Request, res: Response) => {
   try {
-    const { email, phoneNumber } = req.body;
+    const { email, phoneNumber }: { email?: string; phoneNumber?: string } = req.body;
 
     if (!email && !phoneNumber) {
       return res.status(400).json({ error: 'Email or phoneNumber is required' });
     }
 
     // Step 1: Find all existing matching contacts
-    const existingContacts = await prisma.contact.findMany({
+    const existingContacts: Contact[] = await prisma.contact.findMany({
       where: {
         OR: [
           email ? { email } : undefined,
@@ -45,10 +47,11 @@ app.post('/identify', async (req: Request, res: Response) => {
     });
 
     // Step 2: Determine primary contact
-    let primaryContact = existingContacts.find(c => c.linkPrecedence === 'primary') || existingContacts[0];
+    let primaryContact: Contact | undefined =
+      existingContacts.find((c: Contact) => c.linkPrecedence === 'primary') || existingContacts[0];
 
     if (!primaryContact && (email || phoneNumber)) {
-      // If no contact exists, create a new primary contact
+      // No contact exists, create a new primary
       primaryContact = await prisma.contact.create({
         data: {
           email,
@@ -57,12 +60,14 @@ app.post('/identify', async (req: Request, res: Response) => {
         },
       });
     } else if (primaryContact) {
-      // Merge multiple primary contacts if found
-      const primaryContacts = existingContacts.filter(c => c.linkPrecedence === 'primary');
-      for (const contact of primaryContacts) {
-        if (contact.id !== primaryContact.id) {
+      // Merge primary contacts
+      const primaryContacts = existingContacts.filter(
+        (c: Contact) => c.linkPrecedence === 'primary'
+      );
+      for (const c of primaryContacts) {
+        if (c.id !== primaryContact.id) {
           await prisma.contact.update({
-            where: { id: contact.id },
+            where: { id: c.id },
             data: {
               linkPrecedence: 'secondary',
               linkedId: primaryContact.id,
@@ -71,16 +76,15 @@ app.post('/identify', async (req: Request, res: Response) => {
         }
       }
 
-      // Check for duplicate entry
+      // Prevent duplicate
       const isExactDuplicate = existingContacts.some(
-        c => c.email === email && c.phoneNumber === phoneNumber
+        (c: Contact) => c.email === email && c.phoneNumber === phoneNumber
       );
 
       if (!isExactDuplicate && (email || phoneNumber)) {
-        const existsWithEmail = existingContacts.some(c => c.email === email);
-        const existsWithPhone = existingContacts.some(c => c.phoneNumber === phoneNumber);
+        const existsWithEmail = existingContacts.some((c: Contact) => c.email === email);
+        const existsWithPhone = existingContacts.some((c: Contact) => c.phoneNumber === phoneNumber);
 
-        // Only insert a new contact if this combo is unique
         if (!existsWithEmail || !existsWithPhone) {
           await prisma.contact.create({
             data: {
@@ -94,8 +98,8 @@ app.post('/identify', async (req: Request, res: Response) => {
       }
     }
 
-    // Step 3: Refetch all related contacts (primary + secondaries)
-    const relatedContacts = await prisma.contact.findMany({
+    // Step 3: Refetch all related contacts
+    const relatedContacts: Contact[] = await prisma.contact.findMany({
       where: {
         OR: [
           { id: primaryContact.id },
@@ -106,14 +110,14 @@ app.post('/identify', async (req: Request, res: Response) => {
     });
 
     const uniqueEmails = Array.from(
-      new Set(relatedContacts.map(c => c.email).filter((e): e is string => !!e))
+      new Set(relatedContacts.map((c: Contact) => c.email).filter((e): e is string => !!e))
     );
     const uniquePhones = Array.from(
-      new Set(relatedContacts.map(c => c.phoneNumber).filter((p): p is string => !!p))
+      new Set(relatedContacts.map((c: Contact) => c.phoneNumber).filter((p): p is string => !!p))
     );
     const secondaryIds = relatedContacts
-      .filter(c => c.linkPrecedence === 'secondary')
-      .map(c => c.id);
+      .filter((c: Contact) => c.linkPrecedence === 'secondary')
+      .map((c: Contact) => c.id);
 
     res.status(200).json({
       contact: {
@@ -130,6 +134,5 @@ app.post('/identify', async (req: Request, res: Response) => {
 });
 
 app.listen(PORT, () => {
-  const url = `http://localhost:${PORT}`;
-  console.log(`Server running at: \x1b[36m${url}\x1b[0m`);
+  console.log(`Server running at: \x1b[36mhttp://localhost:${PORT}\x1b[0m`);
 });
